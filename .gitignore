@@ -1,0 +1,19 @@
+# Python / ML Service
+ml-service/venv/
+ml-service/__pycache__/
+ml-service/.pytest_cache/
+ml-service/runs/
+*.pt
+*.onnx
+
+# Node / Web Client
+web-client/node_modules/
+web-client/.next/
+web-client/.env*.local
+
+# Datasets
+unified_dataset/
+
+# OS / Editor
+.DS_Store
+.vscode/
