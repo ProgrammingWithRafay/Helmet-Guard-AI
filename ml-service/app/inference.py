@@ -11,11 +11,15 @@ model = None
 def get_model():
     global model
     if model is None:
+        v3_best = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs", "helmet_v3_hard_negatives", "weights", "best.pt"))
         v2_best = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs", "helmet_v2_accurate-2", "weights", "best.pt"))
         v2_last = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs", "helmet_v2_accurate-2", "weights", "last.pt"))
         v1_best = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs", "detect", "runs", "helmet_v1", "weights", "best.pt"))
         
-        if os.path.exists(v2_best):
+        if os.path.exists(v3_best):
+            weights_path = v3_best
+            print(f"Using fine-tuned v3 model (Hard Negatives): {weights_path}")
+        elif os.path.exists(v2_best):
             weights_path = v2_best
             print(f"Using completed v2 model: {weights_path}")
         elif os.path.exists(v2_last):
@@ -36,8 +40,8 @@ def run_inference(image: np.ndarray, confidence_threshold: float = 0.5) -> Dict[
     start_time = time.time()
     yolo_model = get_model()
     
-    # Run prediction
-    results = yolo_model.predict(source=image, conf=confidence_threshold, save=False)
+    # Run prediction with agnostic_nms=True to suppress overlapping boxes of different classes
+    results = yolo_model.predict(source=image, conf=confidence_threshold, save=False, agnostic_nms=True)
     
     inference_time_ms = int((time.time() - start_time) * 1000)
     

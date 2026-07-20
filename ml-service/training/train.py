@@ -2,17 +2,16 @@ import os
 from ultralytics import YOLO
 
 def main():
-    # Check if a previous interrupted training run exists
-    last_weights_path = os.path.abspath(os.path.join("runs", "helmet_v2_accurate-2", "weights", "last.pt"))
+    # Check if a previous model exists to fine-tune
+    best_weights_path = os.path.abspath(os.path.join("runs", "helmet_v2_accurate-2", "weights", "best.pt"))
     
-    if os.path.exists(last_weights_path):
-        print(f"Found existing training state at {last_weights_path}")
-        print("Resuming training from where it left off!...")
-        model = YOLO(last_weights_path)
-        resume_training = True
+    if os.path.exists(best_weights_path):
+        print(f"Found existing best model at {best_weights_path}")
+        print("Fine-tuning on the updated dataset with hard negatives...")
+        model = YOLO(best_weights_path)
+        resume_training = False # Start a new fine-tuning run
     else:
         print("Loading YOLO11s pretrained model (The absolute latest YOLO version!)...")
-        # Upgraded to YOLO11 'small' (s) for state-of-the-art accuracy
         model = YOLO("yolo11s.pt") 
         resume_training = False
     
@@ -28,12 +27,12 @@ def main():
     
     train_args = {
         "data": data_yaml_path,
-        "epochs": 50,
-        "patience": 20, 
+        "epochs": 10, # Just 10 epochs for fine-tuning
+        "patience": 5, 
         "imgsz": 640,
         "batch": 16,
         "project": os.path.abspath("runs"),
-        "name": "helmet_v2_accurate-2",
+        "name": "helmet_v3_hard_negatives",
         "device": "cpu",
         "exist_ok": True
     }
@@ -44,7 +43,7 @@ def main():
         results = model.train(**train_args)
     
     print("Training finished!")
-    print("Your trained model weights are saved at: runs/helmet_v2_accurate/weights/best.pt")
+    print("Your trained model weights are saved at: runs/helmet_v3_hard_negatives/weights/best.pt")
 
 if __name__ == "__main__":
     main()
