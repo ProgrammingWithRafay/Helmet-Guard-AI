@@ -2,13 +2,18 @@ import os
 from ultralytics import YOLO
 
 def main():
-    # Check if a previous model exists to fine-tune
-    best_weights_path = os.path.abspath(os.path.join("runs", "helmet_v2_accurate-2", "weights", "best.pt"))
+    v3_last_weights = os.path.abspath(os.path.join("runs", "helmet_v3_hard_negatives", "weights", "last.pt"))
+    v2_best_weights = os.path.abspath(os.path.join("runs", "helmet_v2_accurate-2", "weights", "best.pt"))
     
-    if os.path.exists(best_weights_path):
-        print(f"Found existing best model at {best_weights_path}")
+    if os.path.exists(v3_last_weights):
+        print(f"Found interrupted v3 training state at {v3_last_weights}")
+        print("Resuming v3 training from where it left off!...")
+        model = YOLO(v3_last_weights)
+        resume_training = True
+    elif os.path.exists(v2_best_weights):
+        print(f"Found existing best model at {v2_best_weights}")
         print("Fine-tuning on the updated dataset with hard negatives...")
-        model = YOLO(best_weights_path)
+        model = YOLO(v2_best_weights)
         resume_training = False # Start a new fine-tuning run
     else:
         print("Loading YOLO11s pretrained model (The absolute latest YOLO version!)...")
