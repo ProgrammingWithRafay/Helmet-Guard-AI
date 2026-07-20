@@ -424,11 +424,14 @@ export default function Dashboard() {
         const ctx = canvas?.getContext('2d');
         if (!canvas || !ctx) return;
 
-        const drawOverlay = (w: number, h: number, sourceElem: HTMLImageElement | HTMLVideoElement) => {
+        const drawBoxes = (w: number, h: number, sourceElem?: HTMLImageElement | HTMLVideoElement) => {
             canvas.width = w;
             canvas.height = h;
             ctx.clearRect(0, 0, w, h);
-            ctx.drawImage(sourceElem, 0, 0, w, h);
+            
+            if (sourceElem) {
+                ctx.drawImage(sourceElem, 0, 0, w, h);
+            }
 
             detections.forEach(det => {
                 const { x_min, y_min, x_max, y_max } = det.bbox;
@@ -452,10 +455,10 @@ export default function Dashboard() {
 
         if (mode === 'upload' && imageSrc) {
             const img = new Image();
-            img.onload = () => drawOverlay(img.width, img.height, img);
+            img.onload = () => drawBoxes(img.width, img.height, img);
             img.src = imageSrc;
         } else if (mode === 'webcam' && videoRef.current && videoRef.current.videoWidth) {
-            drawOverlay(videoRef.current.videoWidth, videoRef.current.videoHeight, videoRef.current);
+            drawBoxes(videoRef.current.videoWidth, videoRef.current.videoHeight);
         } else {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
@@ -564,13 +567,13 @@ export default function Dashboard() {
     
               {/* Video area */}
               <div className="relative bg-[#050709] flex-1 flex items-center justify-center overflow-hidden">
-                <video ref={videoRef} className="hidden" playsInline muted />
+                <video ref={videoRef} className={mode === 'webcam' && cameraOn ? "absolute inset-0 w-full h-full object-contain" : "hidden"} playsInline muted autoPlay />
                 
                 {/* Result display */}
                 {mode === 'webcam' || mode === 'upload' ? (
                   <canvas
                     ref={canvasRef}
-                    className="max-w-full max-h-full object-contain"
+                    className="absolute inset-0 w-full h-full object-contain z-10 pointer-events-none"
                   />
                 ) : (
                   <div className="flex flex-col items-center gap-4 text-muted-foreground">
