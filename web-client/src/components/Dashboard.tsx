@@ -161,12 +161,24 @@ function AlertRow({ alert }: { alert: AlertEntry }) {
   );
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+interface TooltipPayloadItem {
+  name: string;
+  value: number | string;
+  color: string;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  label?: string;
+}
+
+const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-card border border-border px-3 py-2 rounded-sm font-mono text-xs">
       <div className="text-muted-foreground mb-1">{label}</div>
-      {payload.map((p: any) => (
+      {payload.map((p) => (
         <div key={p.name} style={{ color: p.color }}>
           {p.name}: {p.value}
           {p.name === "compliance" ? "%" : ""}
@@ -205,17 +217,73 @@ export default function Dashboard() {
     const isDetectingRef = useRef<boolean>(false);
     const alertIdRef = useRef(0);
 
-    // Stop webcam when unmounting or switching modes
-    useEffect(() => {
-        if (mode === 'upload') {
-            stopCamera();
-            setDetections([]);
-            setSummary({ total_riders: 0, compliant: 0, violations: 0 });
-            setImageSrc(null);
-            clearCanvas();
+    const stopCamera = useCallback(() => {
+        isDetectingRef.current = false;
+        setIsDetecting(false);
+        if (videoRef.current && videoRef.current.srcObject) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => track.stop());
+            videoRef.current.srcObject = null;
         }
+        setCameraOn(false);
+        setDetections([]);
+        setSummary({ total_riders: 0, compliant: 0, violations: 0 });
+        const canvas = canvasRef.current;
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx?.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    }, []);
+
+    const drawDetections = useCallback(() => {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (!canvas || !ctx) return;
+
+        const drawBoxes = (w: number, h: number, sourceElem?: HTMLImageElement | HTMLVideoElement) => {
+            canvas.width = w;
+            canvas.height = h;
+            ctx.clearRect(0, 0, w, h);
+
+            if (sourceElem) {
+                ctx.drawImage(sourceElem, 0, 0, w, h);
+            }
+
+            detections.forEach(det => {
+                const { x_min, y_min, x_max, y_max } = det.bbox;
+                const isCompliant = det.class === 'helmet';
+                const color = isCompliant ? '#00d9a0' : '#ff4444';
+
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x_min, y_min, x_max - x_min, y_max - y_min);
+
+                ctx.fillStyle = color;
+                const label = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
+                const textWidth = ctx.measureText(label).width;
+                ctx.fillRect(x_min, y_min - 24, textWidth + 10, 24);
+
+                ctx.fillStyle = '#000000';
+                ctx.font = '12px monospace';
+                ctx.fillText(label, x_min + 5, y_min - 7);
+            });
+        };
+
+        if (mode === 'upload' && imageSrc) {
+            const img = new Image();
+            img.onload = () => drawBoxes(img.width, img.height, img);
+            img.src = imageSrc;
+        } else if (mode === 'webcam' && videoRef.current && videoRef.current.videoWidth) {
+            drawBoxes(videoRef.current.videoWidth, videoRef.current.videoHeight);
+        } else {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    }, [detections, imageSrc, mode]);
+
+    // Tear down the webcam stream on unmount
+    useEffect(() => {
         return () => stopCamera();
-    }, [mode]);
+    }, [stopCamera]);
 
     // Automatically re-detect if confidence slider changes in upload mode
     useEffect(() => {
@@ -239,7 +307,7 @@ export default function Dashboard() {
     // Draw bounding boxes when detections update
     useEffect(() => {
         drawDetections();
-    }, [detections, imageSrc]);
+    }, [drawDetections]);
 
     // Session uptime
     useEffect(() => {
@@ -263,31 +331,14 @@ export default function Dashboard() {
                 setCameraOn(true);
                 setMode('webcam');
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error accessing webcam", err);
-            if (err.name === 'NotAllowedError') {
+            if (err instanceof DOMException && err.name === 'NotAllowedError') {
                 pushAlert("Camera permission denied. Please allow access in your browser.", "warning");
             } else {
-                pushAlert(`Camera error: ${err.message || "Unknown error"}`, "critical");
+                const message = err instanceof Error ? err.message : "Unknown error";
+                pushAlert(`Camera error: ${message}`, "critical");
             }
-        }
-    };
-
-    const stopCamera = () => {
-        isDetectingRef.current = false;
-        setIsDetecting(false);
-        if (videoRef.current && videoRef.current.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
-            videoRef.current.srcObject = null;
-        }
-        setCameraOn(false);
-        setDetections([]);
-        setSummary({ total_riders: 0, compliant: 0, violations: 0 });
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx?.clearRect(0, 0, canvas.width, canvas.height);
         }
     };
 
@@ -411,59 +462,6 @@ export default function Dashboard() {
         }
     };
 
-    const clearCanvas = () => {
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx?.clearRect(0, 0, canvas.width, canvas.height);
-        }
-    };
-
-    const drawDetections = () => {
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext('2d');
-        if (!canvas || !ctx) return;
-
-        const drawBoxes = (w: number, h: number, sourceElem?: HTMLImageElement | HTMLVideoElement) => {
-            canvas.width = w;
-            canvas.height = h;
-            ctx.clearRect(0, 0, w, h);
-            
-            if (sourceElem) {
-                ctx.drawImage(sourceElem, 0, 0, w, h);
-            }
-
-            detections.forEach(det => {
-                const { x_min, y_min, x_max, y_max } = det.bbox;
-                const isCompliant = det.class === 'helmet';
-                let color = isCompliant ? '#00d9a0' : '#ff4444';
-
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 3;
-                ctx.strokeRect(x_min, y_min, x_max - x_min, y_max - y_min);
-
-                ctx.fillStyle = color;
-                const label = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
-                const textWidth = ctx.measureText(label).width;
-                ctx.fillRect(x_min, y_min - 24, textWidth + 10, 24);
-
-                ctx.fillStyle = '#000000';
-                ctx.font = '12px monospace';
-                ctx.fillText(label, x_min + 5, y_min - 7);
-            });
-        };
-
-        if (mode === 'upload' && imageSrc) {
-            const img = new Image();
-            img.onload = () => drawBoxes(img.width, img.height, img);
-            img.src = imageSrc;
-        } else if (mode === 'webcam' && videoRef.current && videoRef.current.videoWidth) {
-            drawBoxes(videoRef.current.videoWidth, videoRef.current.videoHeight);
-        } else {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-    };
-
     const compPct = summary.total_riders > 0 ? (summary.compliant / summary.total_riders) * 100 : 100;
     const rollingComp = chartData.length > 0 
         ? chartData.reduce((acc, curr) => acc + curr.compliance, 0) / chartData.length 
@@ -580,7 +578,7 @@ export default function Dashboard() {
                     <CameraOff size={40} strokeWidth={1} />
                     <div className="font-mono text-sm text-center">
                       <div>Camera not active</div>
-                      <div className="text-xs mt-1 opacity-60">Click "START CAMERA" or "UPLOAD IMAGE" to begin</div>
+                      <div className="text-xs mt-1 opacity-60">{'Click "START CAMERA" or "UPLOAD IMAGE" to begin'}</div>
                     </div>
                   </div>
                 )}
