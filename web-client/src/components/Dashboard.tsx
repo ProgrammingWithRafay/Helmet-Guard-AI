@@ -30,7 +30,9 @@ import {
   Cell,
 } from "recharts";
 
-const API_BASE = "http://localhost:8000/api/v1";
+// API base comes from NEXT_PUBLIC_API_URL (set per-environment, e.g. in
+// docker-compose). Falls back to localhost for local `npm run dev`.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
 interface BBox {
     x_min: number;
@@ -217,6 +219,37 @@ export default function Dashboard() {
     const isDetectingRef = useRef<boolean>(false);
     const alertIdRef = useRef(0);
 
+    const pushAlert = useCallback((message: string, severity: AlertEntry["severity"]) => {
+        setAlerts((prev) => {
+            if (prev.length > 0 && prev[0].message === message) {
+                return [{ ...prev[0], count: prev[0].count + 1 }, ...prev.slice(1)];
+            }
+            const entry: AlertEntry = {
+                id: ++alertIdRef.current,
+                ts: new Date().toLocaleTimeString("en-US", { hour12: false }),
+                message,
+                severity,
+                count: 1,
+            };
+            return [entry, ...prev].slice(0, 80);
+        });
+    }, []);
+
+    // Surface a network/API failure to the user (deduped by pushAlert), not just the console.
+    const reportApiError = useCallback((context: string, err: unknown) => {
+        console.error(context, err);
+        let detail = "backend unreachable";
+        if (axios.isAxiosError(err)) {
+            if (err.response) {
+                const code = err.response.data?.error?.code;
+                detail = code ? `server error (${code})` : `server error ${err.response.status}`;
+            } else {
+                detail = "no response — is the API running?";
+            }
+        }
+        pushAlert(`${context}: ${detail}`, "critical");
+    }, [pushAlert]);
+
     const stopCamera = useCallback(() => {
         isDetectingRef.current = false;
         setIsDetecting(false);
@@ -297,12 +330,12 @@ export default function Dashboard() {
                     setDetections(res.data.detections);
                     setSummary(res.data.summary);
                 } catch (err) {
-                    console.error("Redetection failed", err);
+                    reportApiError("Re-detection failed", err);
                 }
             };
             reDetect();
         }
-    }, [confidence, mode, imageSrc]);
+    }, [confidence, mode, imageSrc, reportApiError]);
 
     // Draw bounding boxes when detections update
     useEffect(() => {
@@ -340,22 +373,6 @@ export default function Dashboard() {
                 pushAlert(`Camera error: ${message}`, "critical");
             }
         }
-    };
-
-    const pushAlert = (message: string, severity: AlertEntry["severity"]) => {
-        setAlerts((prev) => {
-            if (prev.length > 0 && prev[0].message === message) {
-                return [{ ...prev[0], count: prev[0].count + 1 }, ...prev.slice(1)];
-            }
-            const entry: AlertEntry = {
-                id: ++alertIdRef.current,
-                ts: new Date().toLocaleTimeString("en-US", { hour12: false }),
-                message,
-                severity,
-                count: 1,
-            };
-            return [entry, ...prev].slice(0, 80);
-        });
     };
 
     const captureAndDetect = async () => {
@@ -406,7 +423,7 @@ export default function Dashboard() {
                 }
             }
         } catch (err) {
-            console.error("Webcam detection failed", err);
+            reportApiError("Webcam detection failed", err);
         }
     };
 
@@ -456,7 +473,7 @@ export default function Dashboard() {
             setSummary(res.data.summary);
             setLatency(Math.round(performance.now() - t0));
         } catch (err) {
-            console.error("Detection failed", err);
+            reportApiError("Image detection failed", err);
         } finally {
             setIsDetecting(false);
         }

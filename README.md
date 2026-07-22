@@ -6,7 +6,7 @@ It combines a fine-tuned **YOLO object-detection model**, a **FastAPI backend (P
 
 ## Features
 
-- **Automated Detection:** Detects "person", "helmet", and "no-helmet" classes with bounding boxes and confidence scores.
+- **Automated Detection:** Detects two classes — `helmet` and `no_helmet` — with bounding boxes and confidence scores. A `no_helmet` detection means a **bare head**, which the system treats as a **compliance violation** (see "Class semantics" below).
 - **Multiple Inputs:** Supports both static image/video uploads and real-time webcam inference.
 - **Live Dashboard:** Clean Next.js dashboard showing real-time detections, confidence adjustments, and aggregate compliance stats (compliant vs. non-compliant riders).
 - **Dockerized Setup:** Easily run the entire stack (Frontend + Backend API) using a single Docker Compose command.
@@ -74,7 +74,7 @@ If you'd like to retrain or fine-tune the model on your own data:
 
 1. Prepare your YOLO formatted dataset in the `/unified_dataset` folder (update `data.yaml` accordingly). 
    *Note: The current model was trained on a robust dataset of **8,328 images**.*
-2. Run the training script (configured for **50 epochs**):
+2. Run the training script (starts fresh from COCO-pretrained `yolo11s.pt`; caps at 60 epochs with early stopping via `patience=10`):
    ```bash
    cd ml-service
    python training/train.py
@@ -83,10 +83,22 @@ If you'd like to retrain or fine-tune the model on your own data:
 
 ---
 
+## Class Semantics (important)
+
+The model has exactly **two classes**: `helmet` (index 0) and `no_helmet` (index 1). There is **no** separate `person`/`rider` class.
+
+**`no_helmet` means "a bare human head."** A bare head is a **positive, detectable violation** — not a background/negative to be ignored. The dashboard counts each `no_helmet` detection as a compliance violation and each `helmet` detection as compliant.
+
+**Consequence to be aware of:** because the model flags *any* bare head, it will report a violation for a bare-headed pedestrian in frame, not only a motorcycle rider. Distinguishing "rider without helmet" from "any bare head" would require adding a `rider`/`person` class and re-labeling the dataset (deliberately out of scope for the current model).
+
+> Note: the standalone `training/add_hard_negatives.py` utility fetches face images and labels bare heads as `no_helmet` (positive), consistent with the above. It is **not** wired into the training pipeline and its output is not part of the current dataset.
+
+---
+
 ## Tuning Detection Confidence
 
 Inside the Web Dashboard, you can adjust the **Confidence Threshold**. 
-- Lower it (e.g., `0.3`) if the model is missing helmets (increases recall, but risks false positives).
+- Lower it (e.g., `0.3`) if the model is missing detections (increases recall — catches more helmets *and* more bare-head violations — but risks false positives).
 - Raise it (e.g., `0.6`) if the model is drawing boxes around incorrect objects (increases precision).
 
 ## License

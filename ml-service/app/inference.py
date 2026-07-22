@@ -1,55 +1,100 @@
 import time
 import uuid
-import cv2
+import threading
 import numpy as np
 from ultralytics import YOLO
-from typing import Dict, Any, List
+from typing import Dict, Any
 import os
 
-model = None
+# Inference settings -- kept in sync with training/validate.py so the model's
+# SERVED behavior matches its VALIDATED behavior (no silent mismatch).
+DEFAULT_CONF = 0.25
+SERVED_IOU = 0.7
+AGNOSTIC_NMS = True     # suppress overlapping boxes of different classes
+
+_RUNS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs"))
+
+# The ONLY model the backend will serve: the validated, leak-free run.
+SERVED_RUN = "helmet_v4_clean"
+SERVED_WEIGHTS = os.path.join(_RUNS, SERVED_RUN, "weights", "best.pt")
+
+# Opt-in escape hatch for local experimentation ONLY. When set truthy, a missing
+# validated model falls back to COCO-pretrained yolo11n.pt instead of refusing to
+# start. Never set this in production -- it would serve an unvalidated model.
+_ALLOW_UNVALIDATED = os.getenv("ALLOW_UNVALIDATED_MODEL", "").lower() in ("1", "true", "yes")
+
+_model = None
+_model_lock = threading.Lock()
+
+
+class ModelNotAvailableError(RuntimeError):
+    """Raised when the validated model is missing and fallback is not allowed."""
+
+
+def _resolve_weights() -> str:
+    """Return the path to the validated model, or fail loudly.
+
+    We deliberately do NOT fall back to older/archived runs or to a raw COCO
+    checkpoint by default. Serving a deprecated or unvalidated model silently is
+    exactly the failure mode we want to prevent: the app should refuse to start
+    rather than pretend an untrained/leaky model is the real detector.
+    """
+    if os.path.isfile(SERVED_WEIGHTS):
+        return SERVED_WEIGHTS
+
+    if _ALLOW_UNVALIDATED:
+        print(
+            "WARNING: validated model not found; ALLOW_UNVALIDATED_MODEL is set, "
+            "falling back to pretrained yolo11n.pt. DO NOT use this in production."
+        )
+        return "yolo11n.pt"
+
+    raise ModelNotAvailableError(
+        f"Validated model not found at {SERVED_WEIGHTS}.\n"
+        f"Train it first:  python training/train.py  (then: python training/validate.py)\n"
+        f"The backend refuses to serve a deprecated/unvalidated model. For local "
+        f"experimentation only, set ALLOW_UNVALIDATED_MODEL=1 to fall back to a "
+        f"pretrained COCO checkpoint (NOT for production)."
+    )
+
+
+def load_model():
+    """Load the model exactly once (thread-safe). Safe to call at startup and
+    from concurrent requests -- the double-checked lock guarantees a single load.
+    Raises ModelNotAvailableError if no validated model exists and fallback is
+    not explicitly allowed."""
+    global _model
+    if _model is None:
+        with _model_lock:
+            if _model is None:                    # re-check inside the lock
+                weights = _resolve_weights()
+                print(f"Loading detection model: {weights}")
+                _model = YOLO(weights)
+    return _model
+
 
 def get_model():
-    global model
-    if model is None:
-        v3_best = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs", "helmet_v3_hard_negatives", "weights", "best.pt"))
-        v2_best = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs", "helmet_v2_accurate-2", "weights", "best.pt"))
-        v2_last = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs", "helmet_v2_accurate-2", "weights", "last.pt"))
-        v1_best = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs", "detect", "runs", "helmet_v1", "weights", "best.pt"))
-        
-        if os.path.exists(v3_best):
-            weights_path = v3_best
-            print(f"Using fine-tuned v3 model (Hard Negatives): {weights_path}")
-        elif os.path.exists(v2_best):
-            weights_path = v2_best
-            print(f"Using completed v2 model: {weights_path}")
-        elif os.path.exists(v2_last):
-            weights_path = v2_last
-            print(f"Testing live training checkpoint: {weights_path}")
-        elif os.path.exists(v1_best):
-            weights_path = v1_best
-            print(f"Using stable v1 model: {weights_path}")
-        else:
-            # Fallback to yolo11n if no trained models are found
-            print("Warning: No trained models found. Using pretrained yolo11n.pt")
-            weights_path = "yolo11n.pt"
-            
-        model = YOLO(weights_path)
-    return model
+    return load_model()
 
-def run_inference(image: np.ndarray, confidence_threshold: float = 0.5) -> Dict[str, Any]:
+
+def run_inference(image: np.ndarray, confidence_threshold: float = DEFAULT_CONF) -> Dict[str, Any]:
     start_time = time.time()
     yolo_model = get_model()
-    
-    # Run prediction with agnostic_nms=True to suppress overlapping boxes of different classes
-    results = yolo_model.predict(source=image, conf=confidence_threshold, save=False, agnostic_nms=True)
-    
+
+    results = yolo_model.predict(
+        source=image,
+        conf=confidence_threshold,
+        iou=SERVED_IOU,
+        agnostic_nms=AGNOSTIC_NMS,
+        save=False,
+        verbose=False,
+    )
     inference_time_ms = int((time.time() - start_time) * 1000)
     
     detections = []
-    total_riders = 0
-    compliant = 0
-    violations = 0
-    
+    compliant = 0      # helmet detections
+    violations = 0     # no_helmet detections (a bare head IS a violation -- Strategy A)
+
     for result in results:
         boxes = result.boxes
         for i, box in enumerate(boxes):
@@ -57,7 +102,7 @@ def run_inference(image: np.ndarray, confidence_threshold: float = 0.5) -> Dict[
             conf = float(box.conf[0])
             cls_id = int(box.cls[0])
             cls_name = yolo_model.names[cls_id]
-            
+
             det_id = f"det_{uuid.uuid4().hex[:8]}"
             detections.append({
                 "id": det_id,
@@ -70,18 +115,16 @@ def run_inference(image: np.ndarray, confidence_threshold: float = 0.5) -> Dict[
                     "y_max": int(y2)
                 }
             })
-            
-            if cls_name == "person" or cls_name == "rider":
-                total_riders += 1
-            elif cls_name == "helmet":
+
+            if cls_name == "helmet":
                 compliant += 1
             elif cls_name == "no_helmet":
                 violations += 1
 
-    # Heuristic for datasets that only label 'helmet' and 'no_helmet'
-    if total_riders == 0:
-        total_riders = compliant + violations
-        
+    # This is a 2-class model (helmet / no_helmet). Every detected head is a
+    # rider we assessed, so total_riders = compliant heads + violation heads.
+    total_riders = compliant + violations
+
     return {
         "request_id": str(uuid.uuid4())[:8],
         "image_width": image.shape[1],

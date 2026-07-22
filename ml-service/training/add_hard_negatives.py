@@ -1,3 +1,25 @@
+"""
+Add bare-head images to the dataset as POSITIVE `no_helmet` (class 1) examples.
+
+DESIGN (Strategy A): In this project `no_helmet` means "a bare human head is a
+detectable violation." A bare head is therefore a POSITIVE detection, not a
+"negative to suppress." Every face this script finds is labeled class 1
+(no_helmet) with a head-sized box -- consistently, with no branch that files a
+face image away as an empty/background label. (A head we cannot localize is
+skipped, not silently turned into a background image, which would teach the
+model that a visible bare head is "nothing here" -- the exact contradiction this
+rewrite removes.)
+
+The synthetic noise/solid images at the bottom are genuine EMPTY scenes (no head
+present) and are the only things given empty labels -- standard anti-hallucination
+backgrounds, unrelated to the face examples above.
+
+NOTE: This script is a standalone data-augmentation utility. It is NOT wired into
+the training pipeline and its output is not part of the current dataset. The Haar
+cascade boxes are approximate; if this is ever brought into the critical path,
+box precision should be verified as a separate task.
+"""
+
 import cv2
 import urllib.request
 import os
@@ -55,50 +77,53 @@ for i, url in enumerate(image_urls):
         # Split into train/val
         target_img_dir = train_images_dir if i % 5 != 0 else val_images_dir
         target_lbl_dir = train_labels_dir if i % 5 != 0 else val_labels_dir
-        
+
         if len(faces) == 0:
-            # If no face is detected by OpenCV, we can just save it as a background image (empty label file)
-            filename = f"bg_{uuid.uuid4().hex[:8]}"
-            cv2.imwrite(os.path.join(target_img_dir, f"{filename}.jpg"), img)
-            open(os.path.join(target_lbl_dir, f"{filename}.txt"), 'w').close()
-            print(f"Added background: {filename}")
-        else:
-            filename = f"face_{uuid.uuid4().hex[:8]}"
-            # To ensure the model doesn't overfit on these exact faces, save a few copies with data augmentation (flips)
-            cv2.imwrite(os.path.join(target_img_dir, f"{filename}.jpg"), img)
-            img_flipped = cv2.flip(img, 1)
-            cv2.imwrite(os.path.join(target_img_dir, f"{filename}_flip.jpg"), img_flipped)
-            
-            # Create YOLO format labels
-            h, w, _ = img.shape
-            
-            # Write normal labels
-            with open(os.path.join(target_lbl_dir, f"{filename}.txt"), 'w') as f, open(os.path.join(target_lbl_dir, f"{filename}_flip.txt"), 'w') as f_flip:
-                for (x, y, fw, fh) in faces:
-                    # Expand the face box slightly to include the whole head
-                    head_x = max(0, x - int(fw * 0.2))
-                    head_y = max(0, y - int(fh * 0.4))
-                    head_w = min(w - head_x, int(fw * 1.4))
-                    head_h = min(h - head_y, int(fh * 1.6))
-                    
-                    # YOLO format: class x_center y_center width height (normalized)
-                    x_center = (head_x + head_w / 2.0) / w
-                    y_center = (head_y + head_h / 2.0) / h
-                    norm_w = head_w / w
-                    norm_h = head_h / h
-                    
-                    # class 1 is no_helmet
-                    f.write(f"1 {x_center:.6f} {y_center:.6f} {norm_w:.6f} {norm_h:.6f}\n")
-                    
-                    # Flipped labels (x coordinate is mirrored)
-                    f_flip.write(f"1 {1.0 - x_center:.6f} {y_center:.6f} {norm_w:.6f} {norm_h:.6f}\n")
-                    
-            print(f"Added face (no_helmet): {filename} with {len(faces)} faces")
-            
+            # A bare head we cannot localize is SKIPPED -- never written out as a
+            # background/empty label. Under Strategy A a visible bare head is a
+            # positive no_helmet, so labeling it "nothing here" would be wrong.
+            print(f"Skipped (no face localized): {url}")
+            continue
+
+        filename = f"face_{uuid.uuid4().hex[:8]}"
+        # To ensure the model doesn't overfit on these exact faces, save a few copies with data augmentation (flips)
+        cv2.imwrite(os.path.join(target_img_dir, f"{filename}.jpg"), img)
+        img_flipped = cv2.flip(img, 1)
+        cv2.imwrite(os.path.join(target_img_dir, f"{filename}_flip.jpg"), img_flipped)
+
+        # Create YOLO format labels
+        h, w, _ = img.shape
+
+        # Write normal labels
+        with open(os.path.join(target_lbl_dir, f"{filename}.txt"), 'w') as f, open(os.path.join(target_lbl_dir, f"{filename}_flip.txt"), 'w') as f_flip:
+            for (x, y, fw, fh) in faces:
+                # Expand the face box slightly to include the whole head
+                head_x = max(0, x - int(fw * 0.2))
+                head_y = max(0, y - int(fh * 0.4))
+                head_w = min(w - head_x, int(fw * 1.4))
+                head_h = min(h - head_y, int(fh * 1.6))
+
+                # YOLO format: class x_center y_center width height (normalized)
+                x_center = (head_x + head_w / 2.0) / w
+                y_center = (head_y + head_h / 2.0) / h
+                norm_w = head_w / w
+                norm_h = head_h / h
+
+                # class 1 is no_helmet -- a bare head IS a violation (positive), not a negative
+                f.write(f"1 {x_center:.6f} {y_center:.6f} {norm_w:.6f} {norm_h:.6f}\n")
+
+                # Flipped labels (x coordinate is mirrored)
+                f_flip.write(f"1 {1.0 - x_center:.6f} {y_center:.6f} {norm_w:.6f} {norm_h:.6f}\n")
+
+        print(f"Added bare-head no_helmet example: {filename} with {len(faces)} head(s)")
+
     except Exception as e:
         print(f"Error processing {url}: {e}")
 
-# We will also add some synthetic background images (noise, solid colors, gradients) to teach it not to hallucinate shapes
+# Generic EMPTY-scene backgrounds (random noise / solid colors) -- these contain
+# no head at all, so an empty label is correct. They teach the model not to
+# hallucinate boxes on textureless/noisy regions. This is distinct from the
+# bare-head examples above (which are positive no_helmet detections).
 for i in range(20):
     bg_img = np.random.randint(0, 255, (640, 640, 3), dtype=np.uint8)
     filename = f"bg_noise_{uuid.uuid4().hex[:8]}"

@@ -1,10 +1,11 @@
 # Python / ML Service
+**/__pycache__/
 ml-service/venv/
-ml-service/__pycache__/
 ml-service/.pytest_cache/
 ml-service/runs/
 *.pt
 *.onnx
+*.zip
 
 # Node / Web Client
 web-client/node_modules/
