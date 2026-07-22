@@ -68,13 +68,24 @@ npm run dev
 
 ---
 
+## Pre-Trained Model (Hugging Face)
+
+To avoid bloating the Git repository with large binary files, the final trained YOLO weights (`best.pt`) are hosted on Hugging Face.
+
+You can view and download the production-ready model here:
+**[Hugging Face: ProgrammingWithRafay/helmet-detection-yolo](https://huggingface.co/ProgrammingWithRafay/helmet-detection-yolo)**
+
+Place the downloaded `best.pt` file inside the `ml-service/runs/helmet_v4_clean/weights/` folder (or wherever your environment variables dictate) for the FastAPI backend to use it.
+
+---
+
 ## Model Training
 
 If you'd like to retrain or fine-tune the model on your own data:
 
 1. Prepare your YOLO formatted dataset in the `/unified_dataset` folder (update `data.yaml` accordingly). 
-   *Note: The current model was trained on a robust dataset of **8,328 images**.*
-2. Run the training script (starts fresh from COCO-pretrained `yolo11s.pt`; caps at 60 epochs with early stopping via `patience=10`):
+   *Note: The current model was trained on a robust dataset of **8,328 images**. Due to computational requirements, the final production model was trained using **Kaggle Cloud GPUs** for significantly accelerated processing.*
+2. Run the local training script (starts fresh from COCO-pretrained `yolo11s.pt`; caps at 60 epochs with early stopping via `patience=10`):
    ```bash
    cd ml-service
    python training/train.py
