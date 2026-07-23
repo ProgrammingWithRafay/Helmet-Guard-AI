@@ -17,6 +17,7 @@ It combines a fine-tuned **YOLO object-detection model**, a **FastAPI backend (P
 ## Tech Stack
 
 - **Frontend:** [Next.js](https://nextjs.org/) (React), Tailwind CSS, Lucide Icons, Recharts.
+- **UI/UX Design:** [Figma](https://www.figma.com/) (Prototyping & Wireframing).
 - **Backend / API:** [FastAPI](https://fastapi.tiangolo.com/), Uvicorn, Python.
 - **Machine Learning:** [Ultralytics YOLO](https://github.com/ultralytics/ultralytics), OpenCV, PyTorch.
 - **Infrastructure:** Docker, Docker Compose.
@@ -84,7 +85,7 @@ Place the downloaded `best.pt` file inside the `ml-service/runs/helmet_v4_clean/
 If you'd like to retrain or fine-tune the model on your own data:
 
 1. Prepare your YOLO formatted dataset in the `/unified_dataset` folder (update `data.yaml` accordingly). 
-   *Note: The current model was trained on a robust dataset of **8,328 images**. Due to computational requirements, the final production model was trained using **Kaggle Cloud GPUs** for significantly accelerated processing.*
+   *Note: The current model was trained on a robust dataset of **8,358 images** (8,328 street images + 30 custom presentation environment images). Due to computational requirements, the final production model was fine-tuned using **Kaggle Cloud GPUs** for significantly accelerated processing to combat Domain Shift for live presentations.*
 2. Run the local training script (starts fresh from COCO-pretrained `yolo11s.pt`; caps at 60 epochs with early stopping via `patience=10`):
    ```bash
    cd ml-service
