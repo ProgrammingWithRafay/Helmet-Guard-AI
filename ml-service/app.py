@@ -1,3 +1,6 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 import gradio as gr
 import spaces
 from app.main import app as fastapi_app
