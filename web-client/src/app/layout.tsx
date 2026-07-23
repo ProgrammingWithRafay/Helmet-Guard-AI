@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Helmet Detection System",
+  title: "HelmetGuard AI",
   description: "AI-powered real-time safety compliance monitoring",
 };
 

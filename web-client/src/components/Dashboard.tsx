@@ -439,6 +439,10 @@ export default function Dashboard() {
         if (isDetecting) {
             isDetectingRef.current = false;
             setIsDetecting(false);
+            setDetections([]);
+            setSummary({ total_riders: 0, compliant: 0, violations: 0 });
+            setLatency(0);
+            pushAlert("Detection session stopped", "info");
         } else {
             if (!cameraOn) startCamera();
             isDetectingRef.current = true;
@@ -506,7 +510,7 @@ export default function Dashboard() {
                   className="text-base font-semibold tracking-wide text-foreground"
                   style={{ letterSpacing: "0.08em" }}
                 >
-                  HELMET DETECTION SYSTEM
+                  HELMETGUARD AI
                 </h1>
                 <div className="text-muted-foreground font-mono text-[10px] tracking-widest">
                   SAFETY COMPLIANCE MONITOR · v1.0

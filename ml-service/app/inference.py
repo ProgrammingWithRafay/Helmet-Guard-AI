@@ -70,6 +70,14 @@ def load_model():
                 weights = _resolve_weights()
                 print(f"Loading detection model: {weights}")
                 _model = YOLO(weights)
+                # FORCE PyTorch initialization and layer fusion SYNCHRONOUSLY 
+                # before allowing concurrent web requests. Otherwise, concurrent 
+                # webcam frames can race during the first predict() and cause:
+                # AttributeError: 'Conv' object has no attribute 'bn'
+                print("Warming up model with dummy inference to fuse layers...")
+                dummy_img = np.zeros((640, 640, 3), dtype=np.uint8)
+                _model.predict(source=dummy_img, verbose=False)
+                print("Model warmed up successfully.")
     return _model
 
 

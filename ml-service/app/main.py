@@ -86,9 +86,11 @@ async def detect_image(
         # Inference is CPU-bound and blocking -- run it off the event loop so
         # concurrent requests (e.g. the webcam frame stream) aren't stalled.
         return await run_in_threadpool(run_inference, image, confidence_threshold)
-    except Exception:
+    except Exception as e:
+        import traceback
+        err = traceback.format_exc()
         logger.exception("Inference failed for uploaded image")
-        return _error(500, "INFERENCE_FAILED", "Inference failed while processing the image.")
+        return _error(500, "INFERENCE_FAILED", f"Traceback: {err}")
 
 
 @app.post("/api/v1/detect/frame", response_model=DetectionResponse, responses={400: {"model": ErrorResponse}})
@@ -113,9 +115,11 @@ async def detect_frame(request: FrameRequest):
     # --- Inference stage: failures here are a real 500 (server error) ---
     try:
         return await run_in_threadpool(run_inference, image, request.confidence_threshold)
-    except Exception:
+    except Exception as e:
+        import traceback
+        err = traceback.format_exc()
         logger.exception("Inference failed for frame")
-        return _error(500, "INFERENCE_FAILED", "Inference failed while processing the frame.")
+        return _error(500, "INFERENCE_FAILED", f"Traceback: {err}")
 
 
 @app.get("/api/v1/health")
