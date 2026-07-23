@@ -1,6 +1,8 @@
 import gradio as gr
+import spaces
 from app.main import app as fastapi_app
 
+@spaces.GPU
 def api_status():
     return "HelmetGuard AI API is successfully running on Hugging Face!"
 

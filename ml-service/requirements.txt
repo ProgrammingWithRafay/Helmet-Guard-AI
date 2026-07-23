@@ -10,3 +10,5 @@ pytest
 roboflow
 
 gradio
+
+spaces
