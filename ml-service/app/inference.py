@@ -9,7 +9,7 @@ import os
 # Inference settings -- kept in sync with training/validate.py so the model's
 # SERVED behavior matches its VALIDATED behavior (no silent mismatch).
 DEFAULT_CONF = 0.25
-SERVED_IOU = 0.7
+SERVED_IOU = 0.45
 AGNOSTIC_NMS = True     # suppress overlapping boxes of different classes
 
 _RUNS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs"))

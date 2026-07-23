@@ -44,7 +44,7 @@ image_urls = [
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 # Paths for dataset
-dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "unified_dataset"))
+dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "unified_dataset"))
 train_images_dir = os.path.join(dataset_path, "images", "train")
 train_labels_dir = os.path.join(dataset_path, "labels", "train")
 val_images_dir = os.path.join(dataset_path, "images", "valid")

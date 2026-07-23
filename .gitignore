@@ -6,6 +6,8 @@ ml-service/runs/
 *.pt
 *.onnx
 *.zip
+*.rar
+.venv/
 
 # Node / Web Client
 web-client/node_modules/
