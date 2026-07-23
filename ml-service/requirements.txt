@@ -8,3 +8,5 @@ ultralytics
 opencv-python
 pytest
 roboflow
+
+gradio
